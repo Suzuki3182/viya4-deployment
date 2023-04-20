@@ -1,0 +1,28 @@
+---
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: cas-manage-cpu-and-memory
+patch: |-
+  - op: add
+    path: /spec/controllerTemplate/spec/containers/0/resources/limits
+    value:
+      memory: {{ AMOUNT-OF-RAM }}
+  - op: replace
+    path: /spec/controllerTemplate/spec/containers/0/resources/requests/memory
+    value:
+      {{ AMOUNT-OF-RAM }}
+  - op: add
+    path: /spec/controllerTemplate/spec/containers/0/resources/limits/cpu
+    value:
+      {{ NUMBER-OF-CORES }}
+  - op: replace
+    path: /spec/controllerTemplate/spec/containers/0/resources/requests/cpu
+    value:
+      {{ NUMBER-OF-CORES }}
+target:
+  group: viya.sas.com
+  kind: CASDeployment
+  # This applies to one particular named CAS server:
+  name: {{ NAME-OF-SERVER }}
+  version: v1alpha1

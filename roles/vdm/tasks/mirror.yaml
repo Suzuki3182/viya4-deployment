@@ -1,0 +1,37 @@
+# Copyright © 2020-2023, SAS Institute Inc., Cary, NC, USA. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+---
+- name: mirror - copy example
+  copy:
+    src: "{{ DEPLOY_DIR }}/sas-bases/examples/mirror/mirror.yaml"
+    dest: "{{ role_path }}/templates/transformers/mirror.yaml"
+    mode: "0660"
+  tags:
+    - install
+    - uninstall
+    - update
+
+- name: mirror - update example
+  replace:
+    path: "{{ role_path }}/templates/transformers/mirror.yaml"
+    regexp: "MIRROR-HOST"
+    replace: "V4_CFG_CR_HOST"  
+  tags:
+    - install
+    - uninstall
+    - update
+
+- name: mirror - overlay
+  overlay_facts:
+    cadence_name: "{{ V4_CFG_CADENCE_NAME }}"
+    cadence_number: "{{ V4_CFG_CADENCE_VERSION }}"
+    existing: "{{ vdm_overlays }}"
+    add:
+      - { transformers: "mirror.yaml", vdm: true, priority: 65 }
+      - { generators: "mirror.yaml", vdm: true, max: "2022.09" }
+      - { generators: "mirror.v2.yaml", vdm: true, min: "2022.10" }
+  tags: 
+    - install
+    - uninstall
+    - update

@@ -1,0 +1,16 @@
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: postgres-storage-transformer
+patch: |-
+  - op: replace
+    path: /spec/storage/storageclass
+    value: {{ V4_CFG_STORAGECLASS }}
+  - op: add
+    path: /metadata/annotations/sas.com~1crunchy-storage-type
+    value: dynamic
+target:
+  group: webinfdsvr.sas.com
+  kind: Pgcluster
+  name: .*                   # By default, target all Pgclusters. Change to a specific name to target just one.
+  version: v1

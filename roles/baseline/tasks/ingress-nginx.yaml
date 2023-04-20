@@ -1,0 +1,105 @@
+# Copyright © 2020-2023, SAS Institute Inc., Cary, NC, USA. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+---
+- set_fact:
+    INGRESS_NGINX_CONFIG: "{{ INGRESS_NGINX_CONFIG |combine(private_ingress[PROVIDER], recursive=True)}}"
+  when:
+    - V4_CFG_INGRESS_MODE == "private"
+    - PROVIDER in private_ingress
+  tags:
+    - install
+    - update
+
+- name: Set the default INGRESS_NGINX_CHART_VERSION if not specified
+  block:
+    - name: Retreive K8s cluster information
+      kubernetes.core.k8s_cluster_info:
+        kubeconfig: "{{ KUBECONFIG }}"
+      register: cluster_info
+    - name: Set the default INGRESS_NGINX_CHART_VERSION based on K8s server minor version
+      set_fact:
+        INGRESS_NGINX_CHART_VERSION: "{{ ingressVersions.k8sMinorVersionFloor.api.chartVersion
+                                      if cluster_info.version.server.kubernetes.minor is version(ingressVersions.k8sMinorVersionFloor.value, 'ge')
+                                      else ingressVersions.k8sMinorVersionCeiling.api.chartVersion }}"
+    - name: Output INGRESS_NGINX_CHART_VERSION
+      debug:
+        msg: "{{ INGRESS_NGINX_CHART_VERSION }}"
+  when:
+    - INGRESS_NGINX_CHART_VERSION|length == 0
+  tags:
+    - install
+    - update
+
+- name: Update INGRESS_NGINX_CONFIG to use NLB for AWS
+  set_fact:
+    INGRESS_NGINX_CONFIG: "{{ INGRESS_NGINX_CONFIG|combine(INGRESS_NGINX_AWS_NLB_CONFIG, recursive=True)}}"
+  when:
+    - PROVIDER == "aws"
+  tags:
+    - install
+    - update
+
+- name: Update INGRESS_NGINX_CONFIG to add Azure load-balancer health probe request path
+  set_fact:
+    INGRESS_NGINX_CONFIG: "{{ INGRESS_NGINX_CONFIG|combine(INGRESS_NGINX_AZURE_LB_HEALTH_PROBE_CONFIG, recursive=True)}}"
+  when:
+    - PROVIDER == "azure"
+  tags:
+    - install
+    - update    
+
+- name: Apply Mitigation for CVE-2021-25742
+  block:
+    - name: Retreive K8s cluster information
+      kubernetes.core.k8s_cluster_info:
+        kubeconfig: "{{ KUBECONFIG }}"
+      register: cluster_info
+    - name: Update INGRESS_NGINX_CONFIG
+      set_fact:
+        INGRESS_NGINX_CONFIG: "{{ INGRESS_NGINX_CONFIG|combine(INGRESS_NGINX_CVE_2021_25742_PATCH, recursive=True)}}"
+      when:
+        - cluster_info.version.server.kubernetes.minor is version(ingressVersions.k8sMinorVersionFloor.value, 'ge')
+        - INGRESS_NGINX_CHART_VERSION is version('4.0.10', ">=") or
+          (INGRESS_NGINX_CHART_VERSION is version('3.40.0', ">=") and INGRESS_NGINX_CHART_VERSION is version('4.0.0', "<"))
+  tags:
+    - install
+    - update
+
+- name: Deploy ingress-nginx
+  kubernetes.core.helm:
+    name: "{{ INGRESS_NGINX_NAME }}"
+    namespace: "{{ INGRESS_NGINX_NAMESPACE }}"
+    chart_repo_url: "{{ INGRESS_NGINX_CHART_URL }}"
+    chart_ref: "{{ INGRESS_NGINX_CHART_NAME }}"
+    chart_version: "{{ INGRESS_NGINX_CHART_VERSION }}"
+    values: "{{ INGRESS_NGINX_CONFIG }}"
+    kubeconfig: "{{ KUBECONFIG }}"
+    create_namespace: true
+    wait: true
+  tags:
+    - install
+    - update
+
+- name: Remove ingress-nginx
+  kubernetes.core.helm:
+    name: "{{ INGRESS_NGINX_NAME }}"
+    namespace: "{{ INGRESS_NGINX_NAMESPACE }}"
+    kubeconfig: "{{ KUBECONFIG }}"
+    wait: true
+    values: "{{ INGRESS_NGINX_CONFIG }}"
+    state: absent
+  tags:
+    - uninstall
+
+- name: Remove {{ INGRESS_NGINX_NAMESPACE }} namespace
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Namespace
+    name: "{{ INGRESS_NGINX_NAMESPACE }}"
+    wait: true
+    wait_timeout: 600
+    state: absent
+    kubeconfig: "{{ KUBECONFIG }}"
+  tags:
+    - uninstall

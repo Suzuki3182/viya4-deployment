@@ -1,0 +1,27 @@
+---
+apiVersion: builtin
+kind: PatchTransformer
+metadata:
+  name: cas-enable-external-services
+patch: |-
+  - op: add
+    path: /spec/publishBinaryService
+    value: true
+  - op: add
+    path: /spec/serviceTemplate
+    value:
+      spec:
+        type: LoadBalancer
+        loadBalancerSourceRanges: {{ LOADBALANCER_SOURCE_RANGES }}
+{% if PROVIDER == "aws" %}
+      metadata:
+        annotations:
+          service.beta.kubernetes.io/aws-load-balancer-type: nlb
+{% endif %}
+target:
+  group: viya.sas.com
+  kind: CASDeployment
+  name: .*
+  # This applies to the default CAS server:
+  labelSelector: "sas.com/cas-server-default"
+  version: v1alpha1
